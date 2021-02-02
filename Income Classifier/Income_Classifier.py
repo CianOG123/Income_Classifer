@@ -22,16 +22,12 @@ Armed-Forces.
 14. Outcome for this record: Can be >50K or <=50K.
 '''
 
-import httplib2
-
-h = httplib2.Http(".cache")
+import requests
 
 DATA_URL = "http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data"
 
 TEST_TRIAL_SPLIT = .75
 DISCRETE_TOLERANCE = .05
-
-from read_from_file_and_net import get_file_from_net as read_url
 
 WORK_CLASS_TYPES = ["Private", "Self-emp-not-inc", "Self-emp-inc", "Federal-gov", "Local-gov", "State-gov", "Without-pay", "Never-worked"]
 MARITAL_STATUS_TYPES = ["Married-civ-spouse", "Divorced", "Never-married", "Separated", "Widowed", "Married-spouse-absent", "Married-AF-spouse"]
@@ -42,10 +38,23 @@ RELATIONSHIP_TYPES = ["Wife", "Own-child", "Husband", "Not-in-family", "Other-re
 RACE_TYPES = ["White", "Asian-Pac-Islander", "Amer-Indian-Eskimo", "Other", "Black"]
 SEX_TYPES = ["Female", "Male"]
 
-def get_data(url):
+def get_url_data(url):
+    try:
+        data = requests.get(url)
+        if 200 <= data.status_code <= 299:
+            if data.headers["Content-Type"] and data.headers["Content-Type"] in ("application/x-httpd-php"):
+                return data.text
+            else:
+                raise ValueError(f"No content'")
+        else:
+            raise ValueError(f"Bad status code")
+    except Exception as e:
+        print("\nError encountered: ", e)
+
+def get_clean_data(url):
     bad_records = 0
     cleaned_dataset = []
-    data = read_url(url)
+    data = get_url_data(url)
     data = data.split("\n")
     for record in data:
         try:
@@ -65,9 +74,7 @@ def get_data(url):
             bad_records += 1
             print(f"Record {record[0]} rejected: {val_err}")
             continue
-
     return tuple(cleaned_dataset)
-
 
 def create_classifier(training_dataset):
     below_50_count = 0
@@ -95,11 +102,8 @@ def create_classifier(training_dataset):
     total_above[7] = [0] * 2
     total_below[7] = [0] * 2
 
-    # Compute the totals for each factor
     for record in training_dataset:
-
         is_above = False
-
         if(record[11] == ">50K"):
             is_above = True
             above_50_count += 1
@@ -126,17 +130,14 @@ def create_classifier(training_dataset):
             total_below[9] += sum_continuous(record[9])
             # Hours per week
             total_below[10] += sum_continuous(record[10])
-
         total_above[1], total_below[1] = calculate_above_below(record[1], WORK_CLASS_TYPES, is_above, total_above[1], total_below[1])        
         total_above[3], total_below[3] = calculate_above_below(record[3], MARITAL_STATUS_TYPES, is_above, total_above[3], total_below[3])           
         total_above[4], total_below[4] = calculate_above_below(record[4], OCCUPATION_TYPES, is_above, total_above[4], total_below[4])   
         total_above[5], total_below[5] = calculate_above_below(record[5], RELATIONSHIP_TYPES, is_above, total_above[5], total_below[5])   
         total_above[6], total_below[6] = calculate_above_below(record[6], RACE_TYPES, is_above, total_above[6], total_below[6])    
         total_above[7], total_below[7] = calculate_above_below(record[7], SEX_TYPES, is_above, total_above[7], total_below[7])
-
     classifier_mid_points = calculate_averages(classifier_mid_points, total_above, total_below, above_50_count, below_50_count)
     return tuple(classifier_mid_points)
-
 
 def calculate_averages(classifier_mid_points, total_above, total_below, above_50_count, below_50_count):
     # Continuous
@@ -159,7 +160,6 @@ def calculate_averages(classifier_mid_points, total_above, total_below, above_50
     classifier_mid_points[7] = find_discrete_average(SEX_TYPES, total_above[7], total_below[7], above_50_count, below_50_count)
     return classifier_mid_points
 
-
 def calculate_above_below(record, data_type, is_above, total_above, total_below):
     if(record != '?'):
         index = data_type.index(record, 0, len(data_type))
@@ -170,11 +170,9 @@ def calculate_above_below(record, data_type, is_above, total_above, total_below)
                 total_below[index] = 1
     return total_above, total_below
 
-
 def sum_continuous(record):
     if(record != '?'):
         return record
-
 
 def find_discrete_average(data_type, total_above, total_below, above_50_count, below_50_count):
     classifier_mid_points = [0] * len(data_type)
@@ -187,7 +185,6 @@ def find_continuous_average(total_above, total_below, above_50_count, below_50_c
     below_50 = total_below / below_50_count
     return (above_50 + below_50) / 2
 
-
 def continuous_compare(record, classifier_mid_points):
     if(record >= classifier_mid_points):
         return True
@@ -198,7 +195,6 @@ def discrete_compare(record, COMPARE_TYPES, classifier_mid_points):
         if(index >= 0 and index <= len(COMPARE_TYPES)):
             if(classifier_mid_points[index] > DISCRETE_TOLERANCE):
                 return True
-
 
 def test_classifier(testing_dataset, classifier_mid_points):
     predicted_correct = 0
@@ -230,7 +226,6 @@ def test_classifier(testing_dataset, classifier_mid_points):
         total_tests, predicted_correct = verify(is_above, record, predicted_correct, total_tests)
     return total_tests, predicted_correct
 
-
 def verify(is_above, record, predicted_correct, total_tests):
     true_count = 0
     for j in range(len(is_above)):
@@ -245,7 +240,6 @@ def verify(is_above, record, predicted_correct, total_tests):
     total_tests += 1
     return total_tests, predicted_correct
 
-
 def print_results(total_tests, predicted_correct):
     print("\nOUTCOME\n")
     print("Records Compared:", total_tests)
@@ -254,16 +248,14 @@ def print_results(total_tests, predicted_correct):
     print("Accuracy:", accuracy, "%")
     print("By Cian O'Gorman TCD")
 
-
 def main():
-    cleaned_dataset = get_data(DATA_URL)
+    cleaned_dataset = get_clean_data(DATA_URL)
 
     training_dataset = cleaned_dataset[:int(len(cleaned_dataset) * TEST_TRIAL_SPLIT)]
     test_dataset = cleaned_dataset[int(len(cleaned_dataset) * TEST_TRIAL_SPLIT):]
     classifier_mid_points = create_classifier(training_dataset)
     total_tests, predicted_correct = test_classifier(test_dataset, classifier_mid_points)
     print_results(total_tests, predicted_correct)
-
 
 if __name__ == "__main__":
     main()
